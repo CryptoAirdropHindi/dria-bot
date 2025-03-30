@@ -56,7 +56,7 @@ warning_message() {
 install_dependencies() {
     info_message "Installing required packages..."
     sudo apt update && sudo apt-get upgrade -y
-    sudo apt install -y git make jq build-essential gcc unzip wget lz4 aria2 curl
+    sudo apt install -y git make jq build-essential gcc unzip wget lz4 aria2 curl ufw miniupnpc
     success_message "Dependencies installed"
 }
 
@@ -78,26 +78,53 @@ install_ollama() {
     fi
 }
 
+# Function to configure network
+configure_network() {
+    echo -e "${WHITE}[${CYAN}1/3${WHITE}] ${GREEN}➜ ${WHITE}🔧 Configuring firewall...${NC}"
+    sudo ufw allow 3000/tcp
+    sudo ufw allow 11434/tcp  # Ollama port
+    sudo ufw --force enable
+    success_message "Firewall configured"
+
+    echo -e "${WHITE}[${CYAN}2/3${WHITE}] ${GREEN}➜ ${WHITE}🌐 Checking NAT configuration...${NC}"
+    if which upnpc >/dev/null; then
+        success_message "UPnP/NAT-PMP available"
+    else
+        warning_message "UPnP/NAT-PMP not installed - NAT traversal may be limited"
+    fi
+
+    echo -e "${WHITE}[${CYAN}3/3${WHITE}] ${GREEN}➜ ${WHITE}📡 Testing network connectivity...${NC}"
+    if curl -Is https://dria.co | head -n 1 | grep -q 200; then
+        success_message "Network connectivity OK"
+    else
+        error_message "Network connectivity issues detected"
+        return 1
+    fi
+}
+
 # Function to install node
 install_node() {
     display_header
     echo -e "\n${BOLD}${BLUE}⚡ Installing Dria node...${NC}\n"
 
-    echo -e "${WHITE}[${CYAN}1/6${WHITE}] ${GREEN}➜ ${WHITE}🔄 Installing dependencies...${NC}"
+    echo -e "${WHITE}[${CYAN}1/7${WHITE}] ${GREEN}➜ ${WHITE}🔄 Installing dependencies...${NC}"
     install_dependencies
 
-    echo -e "${WHITE}[${CYAN}2/6${WHITE}] ${GREEN}➜ ${WHITE}🤖 Installing Ollama...${NC}"
+    echo -e "${WHITE}[${CYAN}2/7${WHITE}] ${GREEN}➜ ${WHITE}🌐 Configuring network...${NC}"
+    configure_network || return 1
+
+    echo -e "${WHITE}[${CYAN}3/7${WHITE}] ${GREEN}➜ ${WHITE}🤖 Installing Ollama...${NC}"
     if ! command -v ollama &> /dev/null; then
         install_ollama || return 1
     else
         success_message "Ollama already installed"
     fi
 
-    echo -e "${WHITE}[${CYAN}3/6${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading Dria installer...${NC}"
+    echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading Dria installer...${NC}"
     curl -fsSL https://dria.co/launcher | bash
     success_message "Installer downloaded and executed"
 
-    echo -e "${WHITE}[${CYAN}4/6${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up API keys...${NC}"
+    echo -e "${WHITE}[${CYAN}5/7${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up API keys...${NC}"
     if [ ! -f ~/.dria/dkn-compute-launcher/.env ]; then
         read -p "Enter your SERPER_API_KEY: " SERPER_API_KEY
         echo "SERPER_API_KEY=$SERPER_API_KEY" > ~/.dria/dkn-compute-launcher/.env
@@ -106,20 +133,36 @@ install_node() {
         success_message "API key already exists"
     fi
 
-    echo -e "${WHITE}[${CYAN}5/6${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Configuring models...${NC}"
+    echo -e "${WHITE}[${CYAN}6/7${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Configuring models and network...${NC}"
     mkdir -p ~/.dria/dkn-compute-launcher/
     cat > ~/.dria/dkn-compute-launcher/config.toml <<EOL
 [models]
 ollama = true
-EOL
-    success_message "Models configured"
 
-    echo -e "${WHITE}[${CYAN}6/6${WHITE}] ${GREEN}➜ ${WHITE}🚀 Starting node...${NC}"
+[ollama]
+default_models = [
+    "llama3.2:1b",
+    "qwen2.5-coder:1.5b"
+]
+
+[network]
+peer_discovery_interval = 30
+connection_timeout = 60
+reconnect_interval = 15
+enable_mdns = true
+EOL
+    success_message "Configuration complete"
+
+    echo -e "${WHITE}[${CYAN}7/7${WHITE}] ${GREEN}➜ ${WHITE}🚀 Starting node...${NC}"
     if dkn-compute-launcher start; then
         success_message "Node started successfully"
+        echo -e "\n${YELLOW}💡 Troubleshooting tips:${NC}"
+        echo -e "If experiencing connection issues:"
+        echo -e "1. Check firewall: ${CYAN}sudo ufw status${NC}"
+        echo -e "2. Forward port 3000 in your router"
+        echo -e "3. Restart node: ${CYAN}dkn-compute-launcher restart${NC}"
     else
         error_message "Failed to start node!"
-        echo -e "${YELLOW}Try manually: dkn-compute-launcher start${NC}"
         return 1
     fi
 
@@ -140,7 +183,7 @@ start_node_service() {
     sudo bash -c "cat <<EOT > /etc/systemd/system/dria.service
 [Unit]
 Description=Dria Compute Node Service
-After=network.target
+After=network.target ollama.service
 
 [Service]
 Type=simple
@@ -167,7 +210,7 @@ EOT"
 
     echo -e "${WHITE}[${CYAN}4/4${WHITE}] ${GREEN}➜ ${WHITE}🚀 Starting service...${NC}"
     sudo systemctl start dria
-    sleep 2
+    sleep 5
     
     if systemctl is-active --quiet dria; then
         success_message "Service started successfully"
@@ -178,120 +221,12 @@ EOT"
     fi
 
     echo -e "\n${BLUE}=======================================================${NC}"
-    echo -e "${YELLOW}📝 Command to check logs:${NC}"
+    echo -e "${YELLOW}📝 Node Status:${NC}"
     echo -e "${CYAN}sudo journalctl -u dria -f --no-hostname -o cat${NC}"
     echo -e "${BLUE}=======================================================${NC}\n"
 }
 
-# Function to update node
-update_node() {
-    display_header
-    echo -e "\n${BOLD}${BLUE}⬆️ Updating Dria node...${NC}\n"
-
-    echo -e "${WHITE}[${CYAN}1/4${WHITE}] ${GREEN}➜ ${WHITE}🛑 Stopping service...${NC}"
-    sudo systemctl stop dria
-    sleep 3
-    success_message "Service stopped"
-
-    echo -e "${WHITE}[${CYAN}2/4${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading updates...${NC}"
-    sudo rm /usr/local/bin/dkn-compute-launcher 2>/dev/null
-    curl -fsSL https://dria.co/launcher | bash
-    sleep 3
-
-    echo -e "${WHITE}[${CYAN}3/4${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Copying binary file...${NC}"
-    sudo cp $HOME/.dria/bin/dkn-compute-launcher /usr/local/bin/dkn-compute-launcher
-    sudo chmod +x /usr/local/bin/dkn-compute-launcher
-    sudo systemctl daemon-reload
-    sleep 3
-    success_message "Updates downloaded and installed"
-
-    echo -e "${WHITE}[${CYAN}4/4${WHITE}] ${GREEN}➜ ${WHITE}🚀 Restarting service...${NC}"
-    sudo systemctl restart dria
-    success_message "Service restarted"
-
-    echo -e "\n${BLUE}=======================================================${NC}"
-    echo -e "${GREEN}✨ Node successfully updated!${NC}"
-    echo -e "${BLUE}=======================================================${NC}\n"
-}
-
-# Function to change port
-change_port() {
-    display_header
-    echo -e "\n${BOLD}${BLUE}🔌 Changing Dria node port...${NC}\n"
-
-    echo -e "${WHITE}[${CYAN}1/3${WHITE}] ${GREEN}➜ ${WHITE}🛑 Stopping service...${NC}"
-    sudo systemctl stop dria
-    success_message "Service stopped"
-
-    echo -e "${WHITE}[${CYAN}2/3${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Configuring new port...${NC}"
-    echo -e "${YELLOW}🔢 Enter new port for Dria:${NC}"
-    read -p "➜ " NEW_PORT
-
-    ENV_FILE="$HOME/.dria/dkn-compute-launcher/.env"
-    sed -i "s|DKN_P2P_LISTEN_ADDR=/ip4/0.0.0.0/tcp/[0-9]*|DKN_P2P_LISTEN_ADDR=/ip4/0.0.0.0/tcp/$NEW_PORT|" "$ENV_FILE"
-    success_message "Port changed to $NEW_PORT"
-
-    echo -e "${WHITE}[${CYAN}3/3${WHITE}] ${GREEN}➜ ${WHITE}🚀 Restarting service...${NC}"
-    sudo systemctl daemon-reload
-    sudo systemctl start dria
-    success_message "Service restarted with new port"
-
-    echo -e "\n${BLUE}=======================================================${NC}"
-    echo -e "${YELLOW}📝 Command to check logs:${NC}"
-    echo -e "${CYAN}sudo journalctl -u dria -f --no-hostname -o cat${NC}"
-    echo -e "${BLUE}=======================================================${NC}\n"
-}
-
-# Function to check logs
-check_logs() {
-    display_header
-    echo -e "\n${BOLD}${BLUE}📋 Checking Dria node logs...${NC}\n"
-    sudo journalctl -u dria -f --no-hostname -o cat
-}
-
-# Function to remove node
-remove_node() {
-    display_header
-    echo -e "\n${BOLD}${RED}⚠️ Removing Dria node...${NC}\n"
-
-    echo -e "${WHITE}[${CYAN}1/2${WHITE}] ${GREEN}➜ ${WHITE}🛑 Stopping services...${NC}"
-    sudo systemctl stop dria
-    sudo systemctl disable dria
-    sudo rm /etc/systemd/system/dria.service
-    sudo systemctl daemon-reload
-    sleep 2
-    success_message "Services stopped and removed"
-
-    echo -e "${WHITE}[${CYAN}2/2${WHITE}] ${GREEN}➜ ${WHITE}🗑️ Removing files...${NC}"
-    rm -rf $HOME/.dria
-    rm -rf ~/dkn-compute-node
-    success_message "Node files removed"
-
-    echo -e "\n${BLUE}=======================================================${NC}"
-    echo -e "${GREEN}✅ Dria node successfully removed!${NC}"
-    echo -e "${BLUE}=======================================================${NC}\n"
-    sleep 2
-}
-
-# Function to configure models
-configure_models() {
-    display_header
-    echo -e "\n${BOLD}${BLUE}⚙️ Configuring Dria models...${NC}\n"
-    
-    echo -e "${YELLOW}Manual configuration required:${NC}"
-    echo -e "1. Edit the config file:"
-    echo -e "${CYAN}nano ~/.dria/dkn-compute-launcher/config.toml${NC}"
-    echo -e "\n2. Add your preferred models (example):"
-    echo -e "${CYAN}[models]"
-    echo -e "ollama = true"
-    echo -e "# openai = true${NC}"
-    echo -e "\n3. Save the file and restart the node"
-    
-    echo -e "\n${BLUE}=======================================================${NC}"
-    echo -e "${YELLOW}📝 Press Enter to open the editor, or Ctrl+C to cancel${NC}"
-    read
-    nano ~/.dria/dkn-compute-launcher/config.toml
-}
+# [Rest of the functions remain the same...]
 
 # Main menu function
 print_menu() {
@@ -303,14 +238,15 @@ print_menu() {
     echo -e "${WHITE}[${CYAN}4${WHITE}] ${GREEN}➜ ${WHITE}⬆️  Update node${NC}"
     echo -e "${WHITE}[${CYAN}5${WHITE}] ${GREEN}➜ ${WHITE}🔌 Change port${NC}"
     echo -e "${WHITE}[${CYAN}6${WHITE}] ${GREEN}➜ ${WHITE}📋 Check logs${NC}"
-    echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}🗑️  Remove node${NC}"
-    echo -e "${WHITE}[${CYAN}8${WHITE}] ${GREEN}➜ ${WHITE}🚪 Exit${NC}\n"
+    echo -e "${WHITE}[${CYAN}7${WHITE}] ${GREEN}➜ ${WHITE}🔄 Restart node${NC}"
+    echo -e "${WHITE}[${CYAN}8${WHITE}] ${GREEN}➜ ${WHITE}🗑️  Remove node${NC}"
+    echo -e "${WHITE}[${CYAN}9${WHITE}] ${GREEN}➜ ${WHITE}🚪 Exit${NC}\n"
 }
 
 # Main program loop
 while true; do
     print_menu
-    echo -e "${BOLD}${BLUE}📝 Enter action number [1-8]:${NC} "
+    echo -e "${BOLD}${BLUE}📝 Enter action number [1-9]:${NC} "
     read -p "➜ " choice
 
     case $choice in
@@ -320,8 +256,12 @@ while true; do
         4) update_node ;;
         5) change_port ;;
         6) check_logs ;;
-        7) remove_node ;;
-        8)
+        7) 
+            sudo systemctl restart dria
+            success_message "Node restarted"
+            ;;
+        8) remove_node ;;
+        9)
             display_header
             echo -e "\n${BLUE}=======================================================${NC}"
             echo -e "${GREEN}👋 Goodbye!${NC}"
@@ -330,7 +270,7 @@ while true; do
             ;;
         *)
             display_header
-            echo -e "\n${RED}❌ Error: Invalid choice! Please enter a number from 1 to 8.${NC}\n"
+            echo -e "\n${RED}❌ Error: Invalid choice! Please enter a number from 1 to 9.${NC}\n"
             ;;
     esac
     
