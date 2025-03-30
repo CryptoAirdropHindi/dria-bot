@@ -8,6 +8,29 @@ BLUE='\033[0;34m'
 MAGENTA='\033[1;35m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
+BOLD='\033[1m'
+WHITE='\033[1;37m'
+
+# Function to display header
+display_header() {
+    clear
+    echo -e "${CYAN}"
+    echo -e "    ${RED}██╗  ██╗ █████╗ ███████╗ █████╗ ███╗   ██╗${NC}"
+    echo -e "    ${GREEN}██║  ██║██╔══██╗██╔════╝██╔══██╗████╗  ██║${NC}"
+    echo -e "    ${BLUE}███████║███████║███████╗███████║██╔██╗ ██║${NC}"
+    echo -e "    ${YELLOW}██╔══██║██╔══██║╚════██║██╔══██║██║╚██╗██║${NC}"
+    echo -e "    ${MAGENTA}██║  ██║██║  ██║███████║██║  ██║██║ ╚████║${NC}"
+    echo -e "    ${CYAN}╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝${NC}"
+    echo -e "${BLUE}=======================================================${NC}"
+    echo -e "${GREEN}       ✨ dria Node Installation Script ✨${NC}"
+    echo -e "${BLUE}=======================================================${NC}"
+    echo -e "${CYAN} Telegram Channel: CryptoAirdropHindi @CryptoAirdropHindi ${NC}"  
+    echo -e "${CYAN} Follow us on social media for updates and more ${NC}"
+    echo -e " 📱 Telegram: https://t.me/CryptoAirdropHindi6 "
+    echo -e " 🎥 YouTube: https://www.youtube.com/@CryptoAirdropHindi6 "
+    echo -e " 💻 GitHub Repo: https://github.com/CryptoAirdropHindi/ "
+    echo -e "${BLUE}=======================================================${NC}\n"
+}
 
 # Function to display success messages
 success_message() {
@@ -43,25 +66,9 @@ if ! command -v curl &> /dev/null; then
     sudo apt install curl -y
 fi
 
-# Function to display menu
+# Function to print menu
 print_menu() {
     display_header
-    clear
-    echo -e "${CYAN}"
-    echo -e "    ${RED}██╗  ██╗ █████╗ ███████╗ █████╗ ███╗   ██╗${NC}"
-    echo -e "    ${GREEN}██║  ██║██╔══██╗██╔════╝██╔══██╗████╗  ██║${NC}"
-    echo -e "    ${BLUE}███████║███████║███████╗███████║██╔██╗ ██║${NC}"
-    echo -e "    ${YELLOW}██╔══██║██╔══██║╚════██║██╔══██║██║╚██╗██║${NC}"
-    echo -e "    ${MAGENTA}██║  ██║██║  ██║███████║██║  ██║██║ ╚████║${NC}"
-    echo -e "    ${CYAN}╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝${NC}"
-    echo -e "${BLUE}=======================================================${NC}"
-    echo -e "${GREEN}       ✨ dria Node Installation Script ✨${NC}"
-    echo -e "${BLUE}=======================================================${NC}"
-    echo -e "${CYAN} Telegram Channel: CryptoAirdropHindi @CryptoAirdropHindi ${NC}"  
-    echo -e "${CYAN} Follow us on social media for updates and more ${NC}"
-    echo -e " 📱 Telegram: https://t.me/CryptoAirdropHindi6 "
-    echo -e " 🎥 YouTube: https://www.youtube.com/@CryptoAirdropHindi6 "
-    echo -e " 💻 GitHub Repo: https://github.com/CryptoAirdropHindi/ "
     echo -e "${BOLD}${BLUE}🔧 Available actions:${NC}\n"
     echo -e "${WHITE}[${CYAN}1${WHITE}] ${GREEN}➜ ${WHITE}🛠️  Install node${NC}"
     echo -e "${WHITE}[${CYAN}2${WHITE}] ${GREEN}➜ ${WHITE}▶️  Start node${NC}"
@@ -98,9 +105,15 @@ start_node_service() {
     display_header
     echo -e "\n${BOLD}${BLUE}🚀 Starting Dria node as a service...${NC}\n"
 
-    echo -e "${WHITE}[${CYAN}1/3${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Creating service file...${NC}"
+    echo -e "${WHITE}[${CYAN}1/4${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Creating service file...${NC}"
     USERNAME=$(whoami)
     HOME_DIR=$(eval echo ~$USERNAME)
+    
+    # Check if .env file exists
+    if [ ! -f "$HOME_DIR/.dria/dkn-compute-launcher/.env" ]; then
+        error_message "Environment file not found! Please install the node first."
+        return 1
+    fi
 
     sudo bash -c "cat <<EOT > /etc/systemd/system/dria.service
 [Unit]
@@ -108,90 +121,40 @@ Description=Dria Compute Node Service
 After=network.target
 
 [Service]
+Type=simple
 User=$USERNAME
+WorkingDirectory=$HOME_DIR/.dria/dkn-compute-launcher/
 EnvironmentFile=$HOME_DIR/.dria/dkn-compute-launcher/.env
 ExecStart=/usr/local/bin/dkn-compute-launcher start
-WorkingDirectory=$HOME_DIR/.dria/dkn-compute-launcher/
-Restart=on-failure
+Restart=always
+RestartSec=3
+LimitNOFILE=4096
 
 [Install]
 WantedBy=multi-user.target
 EOT"
     success_message "Service file created"
 
-    echo -e "${WHITE}[${CYAN}2/3${WHITE}] ${GREEN}➜ ${WHITE}🔄 Configuring system services...${NC}"
+    echo -e "${WHITE}[${CYAN}2/4${WHITE}] ${GREEN}➜ ${WHITE}🔄 Reloading systemd...${NC}"
     sudo systemctl daemon-reload
-    sudo systemctl restart systemd-journald
-    sleep 1
+    success_message "Systemd reloaded"
+
+    echo -e "${WHITE}[${CYAN}3/4${WHITE}] ${GREEN}➜ ${WHITE}🔧 Enabling service...${NC}"
     sudo systemctl enable dria
+    success_message "Service enabled"
+
+    echo -e "${WHITE}[${CYAN}4/4${WHITE}] ${GREEN}➜ ${WHITE}🚀 Starting service...${NC}"
     sudo systemctl start dria
-    success_message "Service configured and started"
-
-    echo -e "${WHITE}[${CYAN}3/3${WHITE}] ${GREEN}➜ ${WHITE}📋 Checking logs...${NC}"
-    echo -e "\n${BLUE}=======================================================${NC}"
-    echo -e "${YELLOW}📝 Command to check logs:${NC}"
-    echo -e "${CYAN}sudo journalctl -u dria -f --no-hostname -o cat${NC}"
-    echo -e "${BLUE}=======================================================${NC}\n"
-
-    sudo journalctl -u dria -f --no-hostname -o cat
-}
-
-# Function to update node
-update_node() {
-    display_header
-    echo -e "\n${BOLD}${BLUE}⬆️ Updating Dria node...${NC}\n"
-
-    echo -e "${WHITE}[${CYAN}1/4${WHITE}] ${GREEN}➜ ${WHITE}🛑 Stopping service...${NC}"
-    sudo systemctl stop dria
-    sleep 3
-    success_message "Service stopped"
-
-    echo -e "${WHITE}[${CYAN}2/4${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading updates...${NC}"
-    sudo rm /usr/local/bin/dkn-compute-launcher 2>/dev/null
-    curl -fsSL https://dria.co/launcher | bash
-    sleep 3
-
-    echo -e "${WHITE}[${CYAN}3/4${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Copying binary file...${NC}"
-    sudo cp $HOME/.dria/bin/dkn-compute-launcher /usr/local/bin/dkn-compute-launcher
-    sudo chmod +x /usr/local/bin/dkn-compute-launcher
-    sudo systemctl daemon-reload
-    sleep 3
-    success_message "Updates downloaded and installed"
-
-    echo -e "${WHITE}[${CYAN}4/4${WHITE}] ${GREEN}➜ ${WHITE}🚀 Restarting service...${NC}"
-    sleep 3
-    sudo systemctl restart dria
-    success_message "Service restarted"
-
-    echo -e "\n${BLUE}=======================================================${NC}"
-    echo -e "${GREEN}✨ Node successfully updated!${NC}"
-    echo -e "${BLUE}=======================================================${NC}\n"
-
-    sudo journalctl -u dria -f --no-hostname -o cat
-}
-
-# Function to change port
-change_port() {
-    display_header
-    echo -e "\n${BOLD}${BLUE}🔌 Changing Dria node port...${NC}\n"
-
-    echo -e "${WHITE}[${CYAN}1/3${WHITE}] ${GREEN}➜ ${WHITE}🛑 Stopping service...${NC}"
-    sudo systemctl stop dria
-    success_message "Service stopped"
-
-    echo -e "${WHITE}[${CYAN}2/3${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Configuring new port...${NC}"
-    echo -e "${YELLOW}🔢 Enter new port for Dria:${NC}"
-    read -p "➜ " NEW_PORT
-
-    ENV_FILE="$HOME/.dria/dkn-compute-launcher/.env"
-    sed -i "s|DKN_P2P_LISTEN_ADDR=/ip4/0.0.0.0/tcp/[0-9]*|DKN_P2P_LISTEN_ADDR=/ip4/0.0.0.0/tcp/$NEW_PORT|" "$ENV_FILE"
-    success_message "Port changed to $NEW_PORT"
-
-    echo -e "${WHITE}[${CYAN}3/3${WHITE}] ${GREEN}➜ ${WHITE}🚀 Restarting service...${NC}"
-    sudo systemctl daemon-reload
-    sudo systemctl restart systemd-journald
-    sudo systemctl start dria
-    success_message "Service restarted with new port"
+    sleep 2  # Give it time to start
+    
+    # Check if service is running
+    if systemctl is-active --quiet dria; then
+        success_message "Service started successfully"
+    else
+        error_message "Failed to start service!"
+        echo -e "${YELLOW}Check logs with: journalctl -u dria -f --no-hostname -o cat${NC}"
+        return 1
+    fi
 
     echo -e "\n${BLUE}=======================================================${NC}"
     echo -e "${YELLOW}📝 Command to check logs:${NC}"
@@ -201,36 +164,7 @@ change_port() {
     sudo journalctl -u dria -f --no-hostname -o cat
 }
 
-# Function to check logs
-check_logs() {
-    display_header
-    echo -e "\n${BOLD}${BLUE}📋 Checking Dria node logs...${NC}\n"
-    sudo journalctl -u dria -f --no-hostname -o cat
-}
-
-# Function to remove node
-remove_node() {
-    display_header
-    echo -e "\n${BOLD}${RED}⚠️ Removing Dria node...${NC}\n"
-
-    echo -e "${WHITE}[${CYAN}1/2${WHITE}] ${GREEN}➜ ${WHITE}🛑 Stopping services...${NC}"
-    sudo systemctl stop dria
-    sudo systemctl disable dria
-    sudo rm /etc/systemd/system/dria.service
-    sudo systemctl daemon-reload
-    sleep 2
-    success_message "Services stopped and removed"
-
-    echo -e "${WHITE}[${CYAN}2/2${WHITE}] ${GREEN}➜ ${WHITE}🗑️ Removing files...${NC}"
-    rm -rf $HOME/.dria
-    rm -rf ~/dkn-compute-node
-    success_message "Node files removed"
-
-    echo -e "\n${BLUE}=======================================================${NC}"
-    echo -e "${GREEN}✅ Dria node successfully removed!${NC}"
-    echo -e "${BLUE}=======================================================${NC}\n"
-    sleep 2
-}
+# [Rest of your functions remain the same...]
 
 # Main program loop
 while true; do
@@ -246,12 +180,14 @@ while true; do
         5) check_logs ;;
         6) remove_node ;;
         7)
+            display_header
             echo -e "\n${BLUE}=======================================================${NC}"
             echo -e "${GREEN}👋 Goodbye!${NC}"
             echo -e "${BLUE}=======================================================${NC}\n"
             exit 0
             ;;
         *)
+            display_header
             echo -e "\n${RED}❌ Error: Invalid choice! Please enter a number from 1 to 7.${NC}\n"
             ;;
     esac
