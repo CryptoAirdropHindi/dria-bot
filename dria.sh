@@ -107,24 +107,33 @@ install_node() {
     display_header
     echo -e "\n${BOLD}${BLUE}⚡ Installing Dria node...${NC}\n"
 
-    echo -e "${WHITE}[${CYAN}1/7${WHITE}] ${GREEN}➜ ${WHITE}🔄 Installing dependencies...${NC}"
+    echo -e "${WHITE}[${CYAN}1/8${WHITE}] ${GREEN}➜ ${WHITE}🔄 Installing dependencies...${NC}"
     install_dependencies
 
-    echo -e "${WHITE}[${CYAN}2/7${WHITE}] ${GREEN}➜ ${WHITE}🌐 Configuring network...${NC}"
+    echo -e "${WHITE}[${CYAN}2/8${WHITE}] ${GREEN}➜ ${WHITE}🌐 Configuring network...${NC}"
     configure_network || return 1
 
-    echo -e "${WHITE}[${CYAN}3/7${WHITE}] ${GREEN}➜ ${WHITE}🤖 Installing Ollama...${NC}"
+    echo -e "${WHITE}[${CYAN}3/8${WHITE}] ${GREEN}➜ ${WHITE}🤖 Installing Ollama...${NC}"
     if ! command -v ollama &> /dev/null; then
         install_ollama || return 1
     else
         success_message "Ollama already installed"
     fi
 
-    echo -e "${WHITE}[${CYAN}4/7${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading Dria installer...${NC}"
+    echo -e "${WHITE}[${CYAN}4/8${WHITE}] ${GREEN}➜ ${WHITE}📥 Downloading Dria installer...${NC}"
     curl -fsSL https://dria.co/launcher | bash
     success_message "Installer downloaded and executed"
 
-    echo -e "${WHITE}[${CYAN}5/7${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up API keys...${NC}"
+    echo -e "${WHITE}[${CYAN}5/8${WHITE}] ${GREEN}➜ ${WHITE}🔍 Locating dkn-compute-launcher...${NC}"
+    if [ ! -f ~/.dria/bin/dkn-compute-launcher ]; then
+        error_message "Could not find dkn-compute-launcher binary!"
+        return 1
+    fi
+    sudo cp ~/.dria/bin/dkn-compute-launcher /usr/local/bin/
+    sudo chmod +x /usr/local/bin/dkn-compute-launcher
+    success_message "Binary installed to /usr/local/bin/"
+
+    echo -e "${WHITE}[${CYAN}6/8${WHITE}] ${GREEN}➜ ${WHITE}🔑 Setting up API keys...${NC}"
     if [ ! -f ~/.dria/dkn-compute-launcher/.env ]; then
         read -p "Enter your SERPER_API_KEY: " SERPER_API_KEY
         echo "SERPER_API_KEY=$SERPER_API_KEY" > ~/.dria/dkn-compute-launcher/.env
@@ -133,7 +142,7 @@ install_node() {
         success_message "API key already exists"
     fi
 
-    echo -e "${WHITE}[${CYAN}6/7${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Configuring models and network...${NC}"
+    echo -e "${WHITE}[${CYAN}7/8${WHITE}] ${GREEN}➜ ${WHITE}⚙️ Configuring models and network...${NC}"
     mkdir -p ~/.dria/dkn-compute-launcher/
     cat > ~/.dria/dkn-compute-launcher/config.toml <<EOL
 [models]
@@ -153,7 +162,7 @@ enable_mdns = true
 EOL
     success_message "Configuration complete"
 
-    echo -e "${WHITE}[${CYAN}7/7${WHITE}] ${GREEN}➜ ${WHITE}🚀 Starting node...${NC}"
+    echo -e "${WHITE}[${CYAN}8/8${WHITE}] ${GREEN}➜ ${WHITE}🚀 Starting node...${NC}"
     if dkn-compute-launcher start; then
         success_message "Node started successfully"
         echo -e "\n${YELLOW}💡 Troubleshooting tips:${NC}"
